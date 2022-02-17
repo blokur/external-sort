@@ -15,46 +15,59 @@ import (
 )
 
 type Info struct {
-	mu            *MemUsage
-	Reader        io.Reader
-	Allocate      *vector.Allocate
-	OutputPath    string
-	totalRows     int
-	PrintMemUsage bool
+	Input       io.Reader
+	Output      io.Writer
+	ChunkFolder string
+	Allocate    *vector.Allocate
+	totalRows   int
+	chunkPaths  []string
 }
 
-// CreateSortedChunks Scan a file and divide it into small sorted chunks.
-// Store all the chunks in a folder an returns all the paths.
-func (f *Info) CreateSortedChunks(ctx context.Context, chunkFolder string, dumpSize int, maxWorkers int64) ([]string, error) {
-	fn := "scan and sort and dump"
-	if dumpSize <= 0 {
-		return nil, errors.Wrap(errors.New("dump size must be greater than 0"), fn)
+// Sort sorts the file on disk using external sort algorithm.
+func (i *Info) Sort(ctx context.Context, dumpSize, workers, size int) error {
+	if i.Input == nil {
+		return ErrNoInput
+	}
+	if i.Output == nil {
+		return ErrNoOutput
+	}
+	if i.ChunkFolder == "" {
+		return ErrNoChunkFolder
+	}
+	if i.Allocate == nil {
+		return ErrNoAllocator
 	}
 
-	if f.PrintMemUsage && f.mu == nil {
-		f.mu = &MemUsage{}
-	}
-
-	err := clearChunkFolder(chunkFolder)
+	err := i.CreateSortedChunks(ctx, dumpSize, int64(workers))
 	if err != nil {
-		return nil, errors.Wrap(err, fn)
+		return errors.Wrap(err, "creating chunks")
+	}
+	return i.MergeSort(size)
+}
+
+// CreateSortedChunks Scan a file and divide it into small sorted chunks. It
+// returns an error if it can't create chunkFolder.
+func (i *Info) CreateSortedChunks(ctx context.Context, dumpSize int, maxWorkers int64) error {
+	if dumpSize <= 0 {
+		return errors.New("dump size must be greater than 0")
+	}
+
+	err := clearChunkFolder(i.ChunkFolder)
+	if err != nil {
+		return errors.Wrap(err, "cleaning chunk folder")
 	}
 	row := 0
-	chunkPaths := []string{}
-	scanner := bufio.NewScanner(f.Reader)
+	scanner := bufio.NewScanner(i.Input)
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	batchChan, err := batchingchannels.NewBatchingChannel(ctx, f.Allocate, maxWorkers, dumpSize)
+	batchChan, err := batchingchannels.NewBatchingChannel(ctx, i.Allocate, maxWorkers, dumpSize)
 	if err != nil {
-		return nil, errors.Wrap(err, "creating batching channel")
+		return errors.Wrap(err, "creating batching channel")
 	}
 	go func() {
 		defer wg.Done()
 		for scanner.Scan() {
-			if f.PrintMemUsage {
-				f.mu.Collect()
-			}
 			text := scanner.Text()
 			batchChan.In() <- text
 			row++
@@ -66,25 +79,25 @@ func (f *Info) CreateSortedChunks(ctx context.Context, chunkFolder string, dumpS
 	err = batchChan.ProcessOut(func(v vector.Vector) error {
 		mu.Lock()
 		chunkIdx++
-		chunkPath := path.Join(chunkFolder, "chunk_"+strconv.Itoa(chunkIdx)+".tsv")
+		chunkPath := path.Join(i.ChunkFolder, "chunk_"+strconv.Itoa(chunkIdx)+".tsv")
 		mu.Unlock()
 		v.Sort()
 		err := vector.Dump(v, chunkPath)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "dumping vector")
 		}
 		mu.Lock()
-		chunkPaths = append(chunkPaths, chunkPath)
+		i.chunkPaths = append(i.chunkPaths, chunkPath)
 		mu.Unlock()
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, fn)
+		return errors.Wrap(err, "creating chunks")
 	}
 	wg.Wait()
 	if scanner.Err() != nil {
-		return nil, errors.Wrap(scanner.Err(), fn)
+		return errors.Wrap(scanner.Err(), "error while scanning")
 	}
-	f.totalRows = row
-	return chunkPaths, nil
+	i.totalRows = row
+	return nil
 }

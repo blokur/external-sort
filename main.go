@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
@@ -10,9 +9,13 @@ import (
 	"github.com/askiada/external-sort/internal"
 	"github.com/askiada/external-sort/vector"
 	"github.com/askiada/external-sort/vector/key"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var log = logrus.StandardLogger()
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -35,34 +38,43 @@ func main() {
 	cobra.CheckErr(rootCmd.Execute())
 }
 
-func rootRun(cmd *cobra.Command, args []string) error {
+func rootRun(cmd *cobra.Command, _ []string) error {
 	start := time.Now()
 	inputPath := internal.InputFile
-	// open a file
 	f, err := os.Open(inputPath)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "opening input path")
 	}
 	defer f.Close()
+	output, err := os.Create(internal.OutputFile)
+	if err != nil {
+		return errors.Wrap(err, "creating output file")
+	}
+	defer func() {
+		err := output.Close()
+		if err != nil {
+			log.Error(err)
+		}
+	}()
 	fI := &file.Info{
-		Reader: f,
+		Input: f,
 		Allocate: vector.DefaultVector(func(line string) (key.Key, error) {
 			return key.AllocateTsv(line, 0)
 		}),
-		OutputPath:    internal.OutputFile,
-		PrintMemUsage: false,
+		Output:      output,
+		ChunkFolder: internal.ChunkFolder,
 	}
 
 	// create small files with maximum 30 rows in each
-	chunkPaths, err := fI.CreateSortedChunks(context.Background(), internal.ChunkFolder, internal.ChunkSize, internal.MaxWorkers)
+	err = fI.CreateSortedChunks(cmd.Context(), internal.ChunkSize, internal.MaxWorkers)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "creating chunks")
 	}
 	// perform a merge sort on all the chunks files.
 	// we sort using a buffer so we don't have to load the entire chunks when merging
-	err = fI.MergeSort(chunkPaths, internal.OutputBufferSize)
+	err = fI.MergeSort(internal.OutputBufferSize)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "merging chunks")
 	}
 	elapsed := time.Since(start)
 	fmt.Println(elapsed)
