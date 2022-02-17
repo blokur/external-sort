@@ -11,6 +11,7 @@ import (
 	"github.com/askiada/external-sort/vector"
 	"github.com/askiada/external-sort/vector/key"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type Int struct {
@@ -87,19 +88,23 @@ func testBatches(t *testing.T, ch *batchingchannels.BatchingChannel) {
 
 func TestBatchingChannel(t *testing.T) {
 	allocate := vector.DefaultVector(AllocateInt)
-	ch := batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 50)
+	ch, err := batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 50)
+	require.NoError(t, err)
 	testBatches(t, ch)
 
-	ch = batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 3)
+	ch, err = batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 3)
+	require.NoError(t, err)
 	testBatches(t, ch)
 
-	ch = batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 1)
+	ch, err = batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 1)
+	require.NoError(t, err)
 	testChannelConcurrentAccessors(t, "batching channel", ch)
 }
 
 func TestBatchingChannelCap(t *testing.T) {
 	allocate := vector.DefaultVector(AllocateInt)
-	ch := batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 5)
+	ch, err := batchingchannels.NewBatchingChannel(context.Background(), allocate, 2, 5)
+	require.NoError(t, err)
 	if ch.Cap() != 5 {
 		t.Error("incorrect capacity on infinite channel")
 	}

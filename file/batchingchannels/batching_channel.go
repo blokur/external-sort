@@ -2,6 +2,7 @@ package batchingchannels
 
 import (
 	"context"
+	"errors"
 
 	"github.com/askiada/external-sort/vector"
 	"golang.org/x/sync/errgroup"
@@ -12,37 +13,38 @@ import (
 // on Out(), it batches together the entire internal buffer each time. Trying to construct an unbuffered batching channel
 // will panic, that configuration is not supported (and provides no benefit over an unbuffered NativeChannel).
 type BatchingChannel struct {
-	input     chan string
-	output    chan vector.Vector
-	buffer    vector.Vector
-	allocate  *vector.Allocate
-	g         *errgroup.Group
-	sem       *semaphore.Weighted
-	dCtx      context.Context
-	size      int
-	maxWorker int64
+	input    chan string
+	output   chan vector.Vector
+	buffer   vector.Vector
+	allocate *vector.Allocate
+	g        *errgroup.Group
+	sem      *semaphore.Weighted
+	dCtx     context.Context
+	size     int
 }
 
-func NewBatchingChannel(ctx context.Context, allocate *vector.Allocate, maxWorker int64, size int) *BatchingChannel {
+// NewBatchingChannel returns a BatchingChannel with max workers. It creates a
+// goroutine and will stop it when the context is cancelled. It returns an
+// error if the input is invalid.
+func NewBatchingChannel(ctx context.Context, allocate *vector.Allocate, maxWorker int64, size int) (*BatchingChannel, error) {
 	if size == 0 {
-		panic("channels: BatchingChannel does not support unbuffered behaviour")
+		return nil, errors.New("channels: BatchingChannel does not support unbuffered behaviour")
 	}
 	if size < 0 {
-		panic("channels: invalid negative size in NewBatchingChannel")
+		return nil, errors.New("channels: invalid negative size in NewBatchingChannel")
 	}
 	g, dCtx := errgroup.WithContext(ctx)
 	ch := &BatchingChannel{
-		input:     make(chan string),
-		output:    make(chan vector.Vector),
-		size:      size,
-		allocate:  allocate,
-		maxWorker: maxWorker,
-		g:         g,
-		sem:       semaphore.NewWeighted(maxWorker),
-		dCtx:      dCtx,
+		input:    make(chan string),
+		output:   make(chan vector.Vector),
+		size:     size,
+		allocate: allocate,
+		g:        g,
+		sem:      semaphore.NewWeighted(maxWorker),
+		dCtx:     dCtx,
 	}
 	go ch.batchingBuffer()
-	return ch
+	return ch, nil
 }
 
 func (ch *BatchingChannel) In() chan<- string {

@@ -1,17 +1,16 @@
+// Package file contains external sort algorithm for large files on disk.
 package file
 
 import (
 	"bufio"
 	"context"
-	"sync"
-
 	"io"
 	"path"
 	"strconv"
+	"sync"
 
 	"github.com/askiada/external-sort/file/batchingchannels"
 	"github.com/askiada/external-sort/vector"
-
 	"github.com/pkg/errors"
 )
 
@@ -46,7 +45,10 @@ func (f *Info) CreateSortedChunks(ctx context.Context, chunkFolder string, dumpS
 	mu := sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	batchChan := batchingchannels.NewBatchingChannel(ctx, f.Allocate, maxWorkers, dumpSize)
+	batchChan, err := batchingchannels.NewBatchingChannel(ctx, i.Allocate, maxWorkers, dumpSize)
+	if err != nil {
+		return errors.Wrap(err, "creating batching channel")
+	}
 	go func() {
 		defer wg.Done()
 		for scanner.Scan() {
