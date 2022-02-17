@@ -1,0 +1,19 @@
+repo:
+  - repo/*
+  - repo/**/*
+
+file:
+  - file/*
+  - file/**/*
+
+sftp:
+  - sftp/*
+  - sftp/**/*
+
+vector:
+  - vector/*
+  - vector/**/*
+
+ci:
+  - .github/*
+  - .github/**/*
