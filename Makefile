@@ -30,3 +30,10 @@ build_docker: ## Build a docker image from current git sha
 	@docker build \
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
 		-t $(docker_image):$(tag) .
+
+.PHONY: dependencies
+dependencies: ## Install dependencies requried for development operations.
+	@go install github.com/cespare/reflex@latest
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44.0
+	@go get -u -d ./...
+	@go mod tidy
