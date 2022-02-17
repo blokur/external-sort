@@ -43,7 +43,7 @@ func NewBatchingChannel(ctx context.Context, allocate *vector.Allocate, maxWorke
 		sem:      semaphore.NewWeighted(maxWorker),
 		dCtx:     dCtx,
 	}
-	go ch.batchingBuffer()
+	go ch.batchingBuffer(ctx)
 	return ch, nil
 }
 
@@ -88,28 +88,30 @@ func (ch *BatchingChannel) Close() {
 	close(ch.input)
 }
 
-func (ch *BatchingChannel) batchingBuffer() {
+func (ch *BatchingChannel) batchingBuffer(ctx context.Context) {
 	ch.buffer = ch.allocate.Vector(ch.size, ch.allocate.Key)
-	for {
-		elem, open := <-ch.input
-		if open {
-			err := ch.buffer.PushBack(elem)
-			if err != nil {
-				ch.g.Go(func() error {
-					return err
-				})
-			}
-		} else {
-			if ch.buffer.Len() > 0 {
-				ch.output <- ch.buffer
-			}
-			break
+	defer close(ch.output)
+	for elem := range ch.input {
+		select {
+		case <-ctx.Done():
+			ch.g.Go(func() error {
+				return ctx.Err()
+			})
+			return
+		default:
+		}
+		err := ch.buffer.PushBack(elem)
+		if err != nil {
+			ch.g.Go(func() error {
+				return err
+			})
 		}
 		if ch.buffer.Len() == ch.size {
 			ch.output <- ch.buffer
 			ch.buffer = ch.allocate.Vector(ch.size, ch.allocate.Key)
 		}
 	}
-
-	close(ch.output)
+	if ch.buffer.Len() > 0 {
+		ch.output <- ch.buffer
+	}
 }
