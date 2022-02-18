@@ -65,17 +65,11 @@ func rootRun(cmd *cobra.Command, _ []string) error {
 		ChunkFolder: internal.ChunkFolder,
 	}
 
-	// create small files with maximum 30 rows in each
-	err = fI.CreateSortedChunks(cmd.Context(), internal.ChunkSize, internal.MaxWorkers)
+	err = fI.Sort(cmd.Context(), internal.ChunkSize, int(internal.MaxWorkers), internal.OutputBufferSize)
 	if err != nil {
 		return errors.Wrap(err, "creating chunks")
 	}
-	// perform a merge sort on all the chunks files.
-	// we sort using a buffer so we don't have to load the entire chunks when merging
-	err = fI.MergeSort(internal.OutputBufferSize)
-	if err != nil {
-		return errors.Wrap(err, "merging chunks")
-	}
+
 	elapsed := time.Since(start)
 	fmt.Println(elapsed)
 	return nil

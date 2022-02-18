@@ -14,6 +14,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Info sorts the Input with the external-sort algorithm and writes the sorted
+// results into the Output. It requires the ChunkFolder for creating temporary
+// files in order to reduce the memory size. In order to sort the Input you
+// only need to call the Sort method. If you want a fine-grained control over
+// the chunks, you can call the CreateSortedChunks and follow by a MergeSort
+// call.
 type Info struct {
 	Input       io.Reader
 	Output      io.Writer
@@ -23,8 +29,12 @@ type Info struct {
 	chunkPaths  []string
 }
 
-// Sort sorts the file on disk using external sort algorithm.
-func (i *Info) Sort(ctx context.Context, dumpSize, workers, size int) error {
+// Sort sorts the file on disk using external sort algorithm. It returns an
+// error if any of the exported properties of the Info is not provided, or an
+// error during the operation occurred. The bufferSize is the amount of buffer
+// we keep in memory per each chunk file to avoid loading the entire chunk when
+// merging. Each chunk contains at most chunkSize lines.
+func (i *Info) Sort(ctx context.Context, chunkSize, workers, bufferSize int) error {
 	if i.Input == nil {
 		return ErrNoInput
 	}
@@ -38,11 +48,11 @@ func (i *Info) Sort(ctx context.Context, dumpSize, workers, size int) error {
 		return ErrNoAllocator
 	}
 
-	err := i.CreateSortedChunks(ctx, dumpSize, int64(workers))
+	err := i.CreateSortedChunks(ctx, chunkSize, int64(workers))
 	if err != nil {
 		return errors.Wrap(err, "creating chunks")
 	}
-	return i.MergeSort(size)
+	return i.MergeSort(bufferSize)
 }
 
 // CreateSortedChunks Scan a file and divide it into small sorted chunks. It
