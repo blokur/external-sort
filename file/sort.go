@@ -28,6 +28,12 @@ func (i *Info) MergeSort(k int) error {
 	bar := pb.StartNew(i.totalRows)
 	chunks.resetOrder()
 	for chunks.len() > 0 {
+		if output.Len() == k {
+			err := WriteBuffer(outputBuffer, output)
+			if err != nil {
+				return errors.Wrap(err, "failed to write buffer")
+			}
+		}
 		toShrink := []int{}
 		// search the smallest value across chunk buffers by comparing first elements only
 		minChunk, minValue, minIdx := chunks.min()
