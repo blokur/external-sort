@@ -102,7 +102,7 @@ func (i *Info) CreateSortedChunks(ctx context.Context, dumpSize int, maxWorkers 
 		return nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "creating chunks")
+		return errors.Wrap(err, "processing batches")
 	}
 	wg.Wait()
 	if scanner.Err() != nil {

@@ -2,11 +2,18 @@ package vector
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/askiada/external-sort/vector/key"
 )
 
 var _ Vector = &SliceVec{}
+
+var elementPool = &sync.Pool{
+	New: func() interface{} {
+		return &Element{}
+	},
+}
 
 func AllocateSlice(size int, allocateKey func(line string) (key.Key, error)) Vector {
 	return &SliceVec{
@@ -21,7 +28,10 @@ type SliceVec struct {
 }
 
 func (v *SliceVec) Reset() {
-	v.s = nil
+	for i := range v.s {
+		elementPool.Put(v.s[i])
+	}
+	v.s = v.s[:0]
 }
 
 func (v *SliceVec) Get(i int) *Element {
@@ -37,7 +47,11 @@ func (v *SliceVec) PushBack(line string) error {
 	if err != nil {
 		return err
 	}
-	v.s = append(v.s, &Element{Line: line, Key: k})
+	// nolint:forcetypeassert // we know for the fact what the type is.
+	e := elementPool.Get().(*Element)
+	e.Line = line
+	e.Key = k
+	v.s = append(v.s, e)
 	return nil
 }
 
@@ -48,5 +62,6 @@ func (v *SliceVec) Sort() {
 }
 
 func (v *SliceVec) FrontShift() {
+	elementPool.Put(v.s[0])
 	v.s = v.s[1:]
 }
